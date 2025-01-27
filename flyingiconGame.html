@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird Mobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+        }
+        #board {
+            display: block;
+            background-image: url("https://github.com/Maskedlll/FlyingIcon/raw/refs/heads/main/Flyingiconbg.png");
+            background-size: cover;
+            width: 100%;
+            height: 100%;
+        }
+        .menu {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .menu button {
+            background-color: #00aaff;
+            color: white;
+            font-size: 24px;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 15px 30px;
+            margin: 10px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .menu button:hover {
+            background-color: #007acc;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="board"></canvas>
+    <div class="menu" id="menu">
+        <button id="startGame">Start Game</button>
+        <button id="highScore">High Score</button>
+    </div>
+    <script>
+        // Board
+        let board;
+        let boardWidth = window.innerWidth;
+        let boardHeight = window.innerHeight;
+        let context;
+
+        // Bird
+        let birdWidth = 34;
+        let birdHeight = 24;
+        let birdX = boardWidth / 8;
+        let birdY = boardHeight / 2;
+        let birdImg;
+
+        let bird = {
+            x: birdX,
+            y: birdY,
+            width: birdWidth,
+            height: birdHeight
+        }
+
+        // Pipes
+        let pipeArray = [];
+        let pipeWidth = 64;
+        let pipeHeight = 512;
+        let pipeX = boardWidth;
+        let pipeY = 0;
+
+        let topPipeImg;
+        let bottomPipeImg;
+
+        // Physics
+        let velocityX = -3; // Vitesse des tuyaux
+        let velocityY = 0;
+        let gravity = 0.4;
+
+        let gameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem("flappyBirdHighScore") || 0;
+
+        window.onload = function () {
+            board = document.getElementById("board");
+            board.height = boardHeight;
+            board.width = boardWidth;
+            context = board.getContext("2d");
+
+            // Utilisation du GIF pour l'oiseau
+            birdImg = new Image();
+            birdImg.src = "https://github.com/Maskedlll/FlyingIcon/raw/refs/heads/main/flyingicon.png";
+
+            topPipeImg = new Image();
+            topPipeImg.src = "https://github.com/Maskedlll/FlyingIcon/raw/refs/heads/main/Toppipe.png";
+
+            bottomPipeImg = new Image();
+            bottomPipeImg.src = "https://github.com/Maskedlll/FlyingIcon/raw/refs/heads/main/Bottompipe.png";
+
+            // Boutons de menu
+            document.getElementById("startGame").addEventListener("click", startGame);
+            document.getElementById("highScore").addEventListener("click", showHighScore);
+
+            // Contrôles pour le jeu
+            document.addEventListener("keydown", moveBird);
+            document.addEventListener("touchstart", moveBird); // Support for touchscreen
+        }
+
+        function startGame() {
+            document.getElementById("menu").style.display = "none";
+            pipeArray = [];
+            score = 0;
+            gameOver = false;
+            bird.y = birdY;
+            velocityY = 0;
+            requestAnimationFrame(update);
+            setInterval(placePipes, 2000); // Générer les tuyaux toutes les 2 secondes
+        }
+
+        function showHighScore() {
+            alert("High Score: " + highScore);
+        }
+
+        function update() {
+            if (gameOver) {
+                return;
+            }
+            requestAnimationFrame(update);
+            context.clearRect(0, 0, board.width, board.height);
+
+            // Bird
+            velocityY += gravity;
+            bird.y = Math.max(bird.y + velocityY, 0);
+            context.drawImage(birdImg, bird.x, bird.y, bird.width, bird.height);
+
+            if (bird.y > board.height) {
+                endGame();
+            }
+
+            // Pipes
+            for (let i = 0; i < pipeArray.length; i++) {
+                let pipe = pipeArray[i];
+                pipe.x += velocityX;
+                context.drawImage(pipe.img, pipe.x, pipe.y, pipe.width, pipe.height);
+
+                if (!pipe.passed && bird.x > pipe.x + pipe.width) {
+                    score += 0.5;
+                    pipe.passed = true;
+                }
+
+                if (detectCollision(bird, pipe)) {
+                    endGame();
+                }
+            }
+
+            // Suppression des tuyaux hors de l'écran
+            while (pipeArray.length > 0 && pipeArray[0].x < -pipeWidth) {
+                pipeArray.shift();
+            }
+
+            context.fillStyle = "cyan";
+            context.font = "45px sans-serif";
+            context.fillText(score, 10, 50);
+        }
+
+        function placePipes() {
+            if (gameOver) {
+                return;
+            }
+
+            // Position aléatoire pour le tuyau supérieur
+            let randomPipeY = pipeY - pipeHeight / 4 - Math.random() * (pipeHeight / 2);
+
+            // Espace d'ouverture (gap) entre les tuyaux supérieur et inférieur
+            let openingSpace = Math.max(board.height / 4, 150); // Minimum de 150px d'ouverture
+
+            // Création du tuyau supérieur
+            let topPipe = {
+                img: topPipeImg,
+                x: pipeX,
+                y: randomPipeY,
+                width: pipeWidth,
+                height: pipeHeight,
+                passed: false
+            };
+            pipeArray.push(topPipe);
+
+            // Création du tuyau inférieur
+            let bottomPipe = {
+                img: bottomPipeImg,
+                x: pipeX,
+                y: randomPipeY + pipeHeight + openingSpace,
+                width: pipeWidth,
+                height: pipeHeight,
+                passed: false
+            };
+            pipeArray.push(bottomPipe);
+        }
+
+        function moveBird(e) {
+            if (gameOver) return;
+
+            velocityY = -6;
+        }
+
+        function detectCollision(a, b) {
+            return a.x < b.x + b.width &&
+                a.x + a.width > b.x &&
+                a.y < b.y + b.height &&
+                a.y + a.height > b.y;
+        }
+
+        function endGame() {
+            gameOver = true;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("flappyBirdHighScore", highScore);
+            }
+            document.getElementById("menu").style.display = "flex";
+        }
+    </script>
+</body>
+</html>
